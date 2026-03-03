@@ -4,6 +4,9 @@ import { GtfsSqlJs } from 'gtfs-sqljs';
 import { IndexedDBCacheStore } from '../lib/cache-store';
 import { buildProxyUrl } from '../lib/proxy';
 import type { NetworkSelection } from '../App';
+// Vite resolves this to a hashed URL under /assets/ at build time,
+// respecting the configured `base` path for GitHub Pages.
+import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 
 // ProgressInfo is not directly exported from gtfs-sqljs, extract from callback type
 type ProgressCallback = NonNullable<GtfsSqlJsOptions['onProgress']>;
@@ -47,6 +50,8 @@ export function useGtfs(selection: NetworkSelection | null): UseGtfsResult {
     const rtUrls = selection.gtfsRtUrls.map(buildProxyUrl);
 
     GtfsSqlJs.fromZip(proxyUrl, {
+      // Point sql.js to the WASM file bundled by Vite (correct path on GitHub Pages)
+      locateFile: () => sqlWasmUrl,
       onProgress: (p) => {
         if (!cancelled) setProgress(p);
       },
