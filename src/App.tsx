@@ -1,5 +1,5 @@
-import { useState, useCallback, useMemo } from 'react';
-import type { VehiclePosition, Route } from 'gtfs-sqljs';
+import { useState, useCallback, useEffect } from 'react';
+import type { Route } from 'gtfs-sqljs';
 import { useHashState } from './hooks/useHashState';
 import { useGtfs } from './hooks/useGtfs';
 import NetworkSearch from './components/NetworkSearch';
@@ -17,13 +17,12 @@ export interface NetworkSelection {
 export default function App() {
   const { networkId, setNetworkId } = useHashState();
   const [selection, setSelection] = useState<NetworkSelection | null>(null);
-  const [selectedVehicle, setSelectedVehicle] = useState<VehiclePosition | null>(null);
+  const [routeMap, setRouteMap] = useState<Map<string, Route>>(new Map());
 
   const handleSelect = useCallback(
     (sel: NetworkSelection) => {
       setSelection(sel);
       setNetworkId(sel.id);
-      setSelectedVehicle(null);
     },
     [setNetworkId],
   );
@@ -31,19 +30,32 @@ export default function App() {
   const handleChangeNetwork = useCallback(() => {
     setSelection(null);
     setNetworkId(null);
-    setSelectedVehicle(null);
+    setRouteMap(new Map());
   }, [setNetworkId]);
 
-  const { gtfs, loading, progress, error } = useGtfs(selection);
+  const { client, loading, progress, error } = useGtfs(selection);
 
-  const routeMap = useMemo(() => {
-    if (!gtfs) return new Map<string, Route>();
-    const map = new Map<string, Route>();
-    for (const r of gtfs.getRoutes()) {
-      map.set(r.route_id, r);
+  // Fetch routes asynchronously from the worker when client becomes available
+  useEffect(() => {
+    if (!client) {
+      setRouteMap(new Map());
+      return;
     }
-    return map;
-  }, [gtfs]);
+
+    let cancelled = false;
+    client.getRoutes().then((routes) => {
+      if (cancelled) return;
+      const map = new Map<string, Route>();
+      for (const r of routes) {
+        map.set(r.route_id, r);
+      }
+      setRouteMap(map);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
 
   const isLanding = !networkId && !selection;
 
@@ -55,12 +67,7 @@ export default function App() {
         </div>
       ) : (
         <>
-          <MapView
-            gtfs={gtfs}
-            selectedVehicle={selectedVehicle}
-            onVehicleClick={setSelectedVehicle}
-            routeMap={routeMap}
-          />
+          <MapView client={client} routeMap={routeMap} />
           <div className="floating-search">
             <NetworkSearch
               onSelect={handleSelect}
