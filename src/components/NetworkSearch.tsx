@@ -6,7 +6,7 @@ interface Dataset {
   id: string;
   title: string;
   type: string;
-  resources: { format: string; original_url: string; url: string }[];
+  resources: { format: string; original_url: string; url: string; features?: string[] }[];
   offers: { nom_commercial?: string; nom_aom?: string }[];
   covered_area: { nom?: string }[];
 }
@@ -239,7 +239,9 @@ export default function NetworkSearch({ onSelect, mode, currentTitle, onChangeNe
             filtered.map((dataset, idx) => {
               const area = dataset.covered_area?.[0]?.nom;
               const hasRt = dataset.resources.some(
-                (r) => r.format.toLowerCase() === 'gtfs-rt',
+                (r) =>
+                  r.format.toLowerCase() === 'gtfs-rt' &&
+                  r.features?.includes('vehicle_positions'),
               );
               return (
                 <li
