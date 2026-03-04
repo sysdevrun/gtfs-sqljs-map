@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { Route } from 'gtfs-sqljs';
+import type { VehiclePosition, Route } from 'gtfs-sqljs';
 import { useHashState } from './hooks/useHashState';
 import { useGtfs } from './hooks/useGtfs';
 import NetworkSearch from './components/NetworkSearch';
@@ -17,12 +17,14 @@ export interface NetworkSelection {
 export default function App() {
   const { networkId, setNetworkId } = useHashState();
   const [selection, setSelection] = useState<NetworkSelection | null>(null);
+  const [selectedVehicle, setSelectedVehicle] = useState<VehiclePosition | null>(null);
   const [routeMap, setRouteMap] = useState<Map<string, Route>>(new Map());
 
   const handleSelect = useCallback(
     (sel: NetworkSelection) => {
       setSelection(sel);
       setNetworkId(sel.id);
+      setSelectedVehicle(null);
     },
     [setNetworkId],
   );
@@ -30,6 +32,7 @@ export default function App() {
   const handleChangeNetwork = useCallback(() => {
     setSelection(null);
     setNetworkId(null);
+    setSelectedVehicle(null);
     setRouteMap(new Map());
   }, [setNetworkId]);
 
@@ -67,7 +70,12 @@ export default function App() {
         </div>
       ) : (
         <>
-          <MapView client={client} routeMap={routeMap} />
+          <MapView
+            client={client}
+            routeMap={routeMap}
+            selectedVehicle={selectedVehicle}
+            onVehicleClick={setSelectedVehicle}
+          />
           <div className="floating-search">
             <NetworkSearch
               onSelect={handleSelect}

@@ -1,35 +1,35 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { GtfsSqlJs, VehiclePosition } from 'gtfs-sqljs';
+import type { VehiclePosition } from 'gtfs-sqljs';
+import type { GtfsWorkerClient } from '../worker/gtfs-client';
 
 const REFRESH_INTERVAL = 10_000;
 
-export function useRealtimeUpdater(gtfs: GtfsSqlJs | null) {
+export function useRealtimeUpdater(client: GtfsWorkerClient | null) {
   const [vehicles, setVehicles] = useState<VehiclePosition[]>([]);
   const [lastUpdate, setLastUpdate] = useState<number | null>(null);
   const [hasRealtime, setHasRealtime] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
 
   const fetchAndUpdate = useCallback(async () => {
-    if (!gtfs) return;
-    const urls = gtfs.getRealtimeFeedUrls();
-    if (urls.length === 0) {
-      setHasRealtime(false);
-      return;
-    }
-    setHasRealtime(true);
+    if (!client) return;
     try {
-      await gtfs.fetchRealtimeData();
-      const positions = gtfs.getVehiclePositions();
+      const urls = await client.getRealtimeFeedUrls();
+      if (urls.length === 0) {
+        setHasRealtime(false);
+        return;
+      }
+      setHasRealtime(true);
+      await client.fetchRealtimeData();
+      const positions = await client.getVehiclePositions();
       setVehicles(positions);
       setLastUpdate(Date.now());
     } catch (err) {
       console.error('Realtime fetch error:', err);
-      // Keep previous vehicles on transient errors
     }
-  }, [gtfs]);
+  }, [client]);
 
   useEffect(() => {
-    if (!gtfs) {
+    if (!client) {
       setVehicles([]);
       setLastUpdate(null);
       setHasRealtime(false);
@@ -42,7 +42,7 @@ export function useRealtimeUpdater(gtfs: GtfsSqlJs | null) {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [gtfs, fetchAndUpdate]);
+  }, [client, fetchAndUpdate]);
 
   return { vehicles, lastUpdate, hasRealtime };
 }

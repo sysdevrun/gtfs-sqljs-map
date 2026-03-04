@@ -1,15 +1,25 @@
 import { GtfsSqlJs } from 'gtfs-sqljs';
 import { IndexedDBCacheStore } from '../lib/cache-store';
-import type { WorkerRequest, WorkerResponse, ProgressResponse } from './messages';
+import type {
+  WorkerRequest,
+  WorkerResponse,
+  ProgressResponse,
+  VehicleDetailResult,
+} from './messages';
 
-// sql.js WASM URL is passed via the first message or we use a known path.
-// Vite's ?url import doesn't work in workers directly, so the main thread
-// will pass the resolved WASM URL when loading.
 let instance: GtfsSqlJs | null = null;
 const cache = new IndexedDBCacheStore();
 
 function post(msg: WorkerResponse) {
   self.postMessage(msg);
+}
+
+function requireInstance(id: number): GtfsSqlJs | null {
+  if (!instance) {
+    post({ type: 'error', id, error: 'No GTFS instance loaded' });
+    return null;
+  }
+  return instance;
 }
 
 async function handleLoad(
@@ -18,7 +28,6 @@ async function handleLoad(
   rtUrls: string[],
   wasmUrl: string,
 ) {
-  // Close previous instance if any
   if (instance) {
     instance.close();
     instance = null;
@@ -50,39 +59,53 @@ async function handleLoad(
   }
 }
 
-function handleClose(id: number) {
-  if (instance) {
-    instance.close();
-    instance = null;
-  }
-  post({ type: 'success', id });
-}
+function handleGetVehicleDetail(
+  id: number,
+  tripId: string,
+  _routeId?: string,
+  currentStopSequence?: number,
+) {
+  const gtfs = requireInstance(id);
+  if (!gtfs) return;
 
-function handleGetRoutes(id: number) {
-  if (!instance) {
-    post({ type: 'error', id, error: 'No GTFS instance loaded' });
-    return;
-  }
-  const routes = instance.getRoutes();
-  post({ type: 'success', id, data: routes });
-}
+  const trips = gtfs.getTrips({ tripId });
+  const trip = trips[0];
 
-function handleGetShapesGeojson(id: number, precision?: number) {
-  if (!instance) {
-    post({ type: 'error', id, error: 'No GTFS instance loaded' });
-    return;
-  }
-  const geojson = instance.getShapesToGeojson({}, precision ?? 5);
-  post({ type: 'success', id, data: geojson });
-}
+  const tripUpdates = gtfs.getTripUpdates({ tripId });
+  const tripUpdate = tripUpdates[0];
+  const delay = tripUpdate?.delay ?? null;
 
-function handleGetStops(id: number) {
-  if (!instance) {
-    post({ type: 'error', id, error: 'No GTFS instance loaded' });
-    return;
-  }
-  const stops = instance.getStops();
-  post({ type: 'success', id, data: stops });
+  const stopTimes = gtfs.getStopTimes({ tripId });
+  const currentSeq = currentStopSequence ?? 0;
+
+  const upcoming = stopTimes
+    .filter((st) => st.stop_sequence >= currentSeq)
+    .slice(0, 5)
+    .map((st) => {
+      const stops = gtfs.getStops({ stopId: st.stop_id });
+      const stopName = stops[0]?.stop_name ?? st.stop_id;
+
+      const stUpdates = gtfs.getStopTimeUpdates({
+        tripId,
+        stopSequence: st.stop_sequence,
+      });
+      const stUpdate = stUpdates[0];
+      const arrivalDelay = stUpdate?.arrival?.delay ?? null;
+
+      return {
+        stopName,
+        scheduledArrival: st.arrival_time,
+        arrivalDelay,
+      };
+    });
+
+  const result: VehicleDetailResult = {
+    tripHeadsign: trip?.trip_headsign,
+    delay,
+    upcoming,
+  };
+
+  post({ type: 'success', id, data: result });
 }
 
 // The first message carries the WASM URL alongside the load request
@@ -91,7 +114,6 @@ let wasmUrl: string | null = null;
 self.onmessage = async (e: MessageEvent<WorkerRequest & { wasmUrl?: string }>) => {
   const msg = e.data;
 
-  // Capture wasmUrl if provided (sent with the first load request)
   if (msg.wasmUrl) {
     wasmUrl = msg.wasmUrl;
   }
@@ -104,17 +126,52 @@ self.onmessage = async (e: MessageEvent<WorkerRequest & { wasmUrl?: string }>) =
       }
       await handleLoad(msg.id, msg.proxyUrl, msg.rtUrls, wasmUrl);
       break;
-    case 'close':
-      handleClose(msg.id);
+    case 'close': {
+      if (instance) {
+        instance.close();
+        instance = null;
+      }
+      post({ type: 'success', id: msg.id });
       break;
-    case 'getRoutes':
-      handleGetRoutes(msg.id);
+    }
+    case 'getRoutes': {
+      const gtfs = requireInstance(msg.id);
+      if (gtfs) post({ type: 'success', id: msg.id, data: gtfs.getRoutes() });
       break;
-    case 'getShapesGeojson':
-      handleGetShapesGeojson(msg.id, msg.precision);
+    }
+    case 'getShapesGeojson': {
+      const gtfs = requireInstance(msg.id);
+      if (gtfs) post({ type: 'success', id: msg.id, data: gtfs.getShapesToGeojson({}, msg.precision ?? 5) });
       break;
-    case 'getStops':
-      handleGetStops(msg.id);
+    }
+    case 'getStops': {
+      const gtfs = requireInstance(msg.id);
+      if (gtfs) post({ type: 'success', id: msg.id, data: gtfs.getStops() });
+      break;
+    }
+    case 'getRealtimeFeedUrls': {
+      const gtfs = requireInstance(msg.id);
+      if (gtfs) post({ type: 'success', id: msg.id, data: gtfs.getRealtimeFeedUrls() });
+      break;
+    }
+    case 'fetchRealtimeData': {
+      const gtfs = requireInstance(msg.id);
+      if (!gtfs) break;
+      try {
+        await gtfs.fetchRealtimeData();
+        post({ type: 'success', id: msg.id });
+      } catch (err) {
+        post({ type: 'error', id: msg.id, error: String(err) });
+      }
+      break;
+    }
+    case 'getVehiclePositions': {
+      const gtfs = requireInstance(msg.id);
+      if (gtfs) post({ type: 'success', id: msg.id, data: gtfs.getVehiclePositions() });
+      break;
+    }
+    case 'getVehicleDetail':
+      handleGetVehicleDetail(msg.id, msg.tripId, msg.routeId, msg.currentStopSequence);
       break;
   }
 };

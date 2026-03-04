@@ -32,12 +32,39 @@ export interface GetStopsRequest {
   id: number;
 }
 
+export interface GetRealtimeFeedUrlsRequest {
+  type: 'getRealtimeFeedUrls';
+  id: number;
+}
+
+export interface FetchRealtimeDataRequest {
+  type: 'fetchRealtimeData';
+  id: number;
+}
+
+export interface GetVehiclePositionsRequest {
+  type: 'getVehiclePositions';
+  id: number;
+}
+
+export interface GetVehicleDetailRequest {
+  type: 'getVehicleDetail';
+  id: number;
+  tripId: string;
+  routeId?: string;
+  currentStopSequence?: number;
+}
+
 export type WorkerRequest =
   | LoadRequest
   | CloseRequest
   | GetRoutesRequest
   | GetShapesGeojsonRequest
-  | GetStopsRequest;
+  | GetStopsRequest
+  | GetRealtimeFeedUrlsRequest
+  | FetchRealtimeDataRequest
+  | GetVehiclePositionsRequest
+  | GetVehicleDetailRequest;
 
 // --- Responses (worker → main) ---
 
@@ -62,3 +89,17 @@ export interface ProgressResponse {
 }
 
 export type WorkerResponse = SuccessResponse | ErrorResponse | ProgressResponse;
+
+// --- Structured data types returned by worker ---
+
+export interface VehicleDetailStop {
+  stopName: string;
+  scheduledArrival: string | undefined;
+  arrivalDelay: number | null;
+}
+
+export interface VehicleDetailResult {
+  tripHeadsign?: string;
+  delay: number | null;
+  upcoming: VehicleDetailStop[];
+}
