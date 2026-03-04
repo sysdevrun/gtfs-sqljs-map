@@ -18,13 +18,14 @@ export function useRealtimeUpdater(client: GtfsWorkerClient | null) {
         setHasRealtime(false);
         return;
       }
-      setHasRealtime(true);
       await client.fetchRealtimeData();
       const positions = await client.getVehiclePositions();
       setVehicles(positions);
+      setHasRealtime(positions.length > 0);
       setLastUpdate(Date.now());
     } catch (err) {
       console.error('Realtime fetch error:', err);
+      setHasRealtime(false);
     }
   }, [client]);
 
