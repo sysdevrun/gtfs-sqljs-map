@@ -1,8 +1,9 @@
-import type { Route, Stop } from 'gtfs-sqljs';
+import type { Route, Stop, VehiclePosition } from 'gtfs-sqljs';
 import type {
   WorkerRequest,
   WorkerResponse,
   ProgressResponse,
+  VehicleDetailResult,
 } from './messages';
 
 export type ProgressInfo = {
@@ -96,6 +97,31 @@ export class GtfsWorkerClient {
 
   async getStops(): Promise<Stop[]> {
     return (await this.send({ type: 'getStops' })) as Stop[];
+  }
+
+  async getRealtimeFeedUrls(): Promise<string[]> {
+    return (await this.send({ type: 'getRealtimeFeedUrls' })) as string[];
+  }
+
+  async fetchRealtimeData(): Promise<void> {
+    await this.send({ type: 'fetchRealtimeData' });
+  }
+
+  async getVehiclePositions(): Promise<VehiclePosition[]> {
+    return (await this.send({ type: 'getVehiclePositions' })) as VehiclePosition[];
+  }
+
+  async getVehicleDetail(
+    tripId: string,
+    routeId?: string,
+    currentStopSequence?: number,
+  ): Promise<VehicleDetailResult> {
+    return (await this.send({
+      type: 'getVehicleDetail',
+      tripId,
+      routeId,
+      currentStopSequence,
+    })) as VehicleDetailResult;
   }
 
   terminate() {

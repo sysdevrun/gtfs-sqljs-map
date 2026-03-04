@@ -1,57 +1,37 @@
-import { useMemo } from 'react';
-import type { GtfsSqlJs, VehiclePosition, Route } from 'gtfs-sqljs';
+import { useState, useEffect } from 'react';
+import type { VehiclePosition, Route } from 'gtfs-sqljs';
+import type { GtfsWorkerClient } from '../worker/gtfs-client';
+import type { VehicleDetailResult } from '../worker/messages';
 import './VehiclePopup.css';
 
 interface Props {
   vehicle: VehiclePosition;
-  gtfs: GtfsSqlJs;
+  client: GtfsWorkerClient;
   routeMap: Map<string, Route>;
   onClose: () => void;
 }
 
-export default function VehiclePopup({ vehicle, gtfs, routeMap, onClose }: Props) {
-  const info = useMemo(() => {
-    const route = vehicle.route_id ? routeMap.get(vehicle.route_id) : null;
+export default function VehiclePopup({ vehicle, client, routeMap, onClose }: Props) {
+  const [detail, setDetail] = useState<VehicleDetailResult | null>(null);
 
-    // Get trip info
-    const trips = gtfs.getTrips({ tripId: vehicle.trip_id });
-    const trip = trips[0];
+  useEffect(() => {
+    let cancelled = false;
+    client
+      .getVehicleDetail(
+        vehicle.trip_id,
+        vehicle.route_id,
+        vehicle.current_stop_sequence,
+      )
+      .then((d) => {
+        if (!cancelled) setDetail(d);
+      })
+      .catch((err) => console.error('Failed to load vehicle detail:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [client, vehicle.trip_id, vehicle.route_id, vehicle.current_stop_sequence]);
 
-    // Get trip update for delay
-    const tripUpdates = gtfs.getTripUpdates({ tripId: vehicle.trip_id });
-    const tripUpdate = tripUpdates[0];
-    const delay = tripUpdate?.delay ?? null;
-
-    // Get upcoming stop times
-    const stopTimes = gtfs.getStopTimes({ tripId: vehicle.trip_id });
-    const currentSeq = vehicle.current_stop_sequence ?? 0;
-
-    const upcoming = stopTimes
-      .filter((st) => st.stop_sequence >= currentSeq)
-      .slice(0, 5)
-      .map((st) => {
-        const stops = gtfs.getStops({ stopId: st.stop_id });
-        const stopName = stops[0]?.stop_name ?? st.stop_id;
-
-        // Check for realtime updates for this stop
-        const stUpdates = gtfs.getStopTimeUpdates({
-          tripId: vehicle.trip_id,
-          stopSequence: st.stop_sequence,
-        });
-        const stUpdate = stUpdates[0];
-        const arrivalDelay = stUpdate?.arrival?.delay ?? null;
-
-        return {
-          stopName,
-          scheduledArrival: st.arrival_time,
-          arrivalDelay,
-        };
-      });
-
-    return { route, trip, delay, upcoming };
-  }, [vehicle, gtfs, routeMap]);
-
-  const { route, trip, delay, upcoming } = info;
+  const route = vehicle.route_id ? routeMap.get(vehicle.route_id) : null;
   const routeColor = route?.route_color ? `#${route.route_color}` : '#667eea';
   const routeTextColor = route?.route_text_color ? `#${route.route_text_color}` : '#fff';
 
@@ -63,6 +43,7 @@ export default function VehiclePopup({ vehicle, gtfs, routeMap, onClose }: Props
     return `${Math.abs(mins)} min early`;
   };
 
+  const delay = detail?.delay ?? null;
   const delayClass =
     delay === null ? '' : delay > 60 ? 'late' : delay < -60 ? 'early' : 'on-time';
 
@@ -78,38 +59,44 @@ export default function VehiclePopup({ vehicle, gtfs, routeMap, onClose }: Props
         <span className="vehicle-popup-route">
           {route?.route_short_name || route?.route_long_name || 'Unknown'}
         </span>
-        {trip?.trip_headsign && (
-          <span className="vehicle-popup-headsign">{trip.trip_headsign}</span>
+        {detail?.tripHeadsign && (
+          <span className="vehicle-popup-headsign">{detail.tripHeadsign}</span>
         )}
       </div>
 
       <div className="vehicle-popup-body">
-        <div className={`vehicle-popup-delay ${delayClass}`}>
-          {formatDelay(delay)}
-        </div>
+        {detail ? (
+          <>
+            <div className={`vehicle-popup-delay ${delayClass}`}>
+              {formatDelay(detail.delay)}
+            </div>
 
-        {upcoming.length > 0 && (
-          <div className="vehicle-popup-stops">
-            <div className="vehicle-popup-stops-title">Next stops</div>
-            <ul>
-              {upcoming.map((stop, i) => (
-                <li key={i} className="vehicle-popup-stop">
-                  <span className="vehicle-popup-stop-name">{stop.stopName}</span>
-                  <span className="vehicle-popup-stop-time">
-                    {stop.scheduledArrival?.slice(0, 5) ?? '--:--'}
-                    {stop.arrivalDelay !== null && stop.arrivalDelay !== 0 && (
-                      <span
-                        className={`vehicle-popup-stop-delay ${stop.arrivalDelay > 0 ? 'late' : 'early'}`}
-                      >
-                        {stop.arrivalDelay > 0 ? '+' : ''}
-                        {Math.round(stop.arrivalDelay / 60)}m
+            {detail.upcoming.length > 0 && (
+              <div className="vehicle-popup-stops">
+                <div className="vehicle-popup-stops-title">Next stops</div>
+                <ul>
+                  {detail.upcoming.map((stop, i) => (
+                    <li key={i} className="vehicle-popup-stop">
+                      <span className="vehicle-popup-stop-name">{stop.stopName}</span>
+                      <span className="vehicle-popup-stop-time">
+                        {stop.scheduledArrival?.slice(0, 5) ?? '--:--'}
+                        {stop.arrivalDelay !== null && stop.arrivalDelay !== 0 && (
+                          <span
+                            className={`vehicle-popup-stop-delay ${stop.arrivalDelay > 0 ? 'late' : 'early'}`}
+                          >
+                            {stop.arrivalDelay > 0 ? '+' : ''}
+                            {Math.round(stop.arrivalDelay / 60)}m
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="vehicle-popup-delay">Loading...</div>
         )}
 
         {vehicle.vehicle?.label && (
