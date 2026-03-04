@@ -251,7 +251,7 @@ export default function MapView({ client, routeMap, selectedVehicle, onVehicleCl
     if (!map || !selectedVehicle?.position || !client) return;
 
     const container = document.createElement('div');
-    popupRef.current = new maplibregl.Popup({ closeOnClick: false, maxWidth: '320px' })
+    popupRef.current = new maplibregl.Popup({ closeOnClick: false, maxWidth: 'none' })
       .setLngLat([selectedVehicle.position.longitude, selectedVehicle.position.latitude])
       .setDOMContent(container)
       .addTo(map);

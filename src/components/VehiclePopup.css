@@ -1,11 +1,6 @@
 .vehicle-popup {
-  position: absolute;
-  bottom: 16px;
-  left: 16px;
-  z-index: 15;
   background: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
   width: 320px;
   max-width: calc(100vw - 32px);
   overflow: hidden;
@@ -133,13 +128,20 @@
   color: #999;
 }
 
+/* Remove default padding from MapLibre popup container */
+.maplibregl-popup-content {
+  padding: 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Hide the default MapLibre close button (we use our own) */
+.maplibregl-popup-close-button {
+  display: none;
+}
+
 @media (max-width: 600px) {
   .vehicle-popup {
-    bottom: 0;
-    left: 0;
-    right: 0;
-    width: auto;
-    max-width: none;
-    border-radius: 12px 12px 0 0;
+    width: 260px;
   }
 }
